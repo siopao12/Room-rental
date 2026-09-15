@@ -17,14 +17,22 @@ export default function RoomDetailsModal({ room, onClose, onBook }) {
   }
 
   return (
-    <div className="modal-overlay active" onClick={onClose}>
+    <div className="modal-overlay active" onClick={onClose} style={{ zIndex: 1100 }}>
       <div 
         className="modal-content" 
-        style={{ maxWidth: '640px', padding: '0', overflow: 'hidden' }}
+        style={{ 
+          maxWidth: '640px', 
+          maxHeight: 'calc(100vh - 40px)', 
+          padding: '0', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          overflow: 'hidden',
+          borderRadius: '20px'
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Image */}
-        <div style={{ position: 'relative', height: '240px', overflow: 'hidden' }}>
+        <div style={{ position: 'relative', height: '220px', flexShrink: 0, overflow: 'hidden' }}>
           <img 
             src={room.image || room.image_url} 
             alt={room.name} 
@@ -46,8 +54,8 @@ export default function RoomDetailsModal({ room, onClose, onBook }) {
           </span>
         </div>
 
-        {/* Modal Body */}
-        <div style={{ padding: '28px' }}>
+        {/* Modal Scrollable Body */}
+        <div style={{ padding: '24px 28px', overflowY: 'auto', flex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', gap: '12px' }}>
             <div>
               <h2 style={{ fontSize: '1.375rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
@@ -83,16 +91,18 @@ export default function RoomDetailsModal({ room, onClose, onBook }) {
           </div>
 
           {/* Description */}
-          <div style={{ marginBottom: '20px' }}>
-            <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>About this room</h4>
-            <p style={{ color: '#475569', fontSize: '0.875rem', lineHeight: '1.6' }}>
-              {room.description}
-            </p>
-          </div>
+          {room.description && (
+            <div style={{ marginBottom: '20px' }}>
+              <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#0f172a', marginBottom: '6px' }}>About this room</h4>
+              <p style={{ color: '#475569', fontSize: '0.875rem', lineHeight: '1.6' }}>
+                {room.description}
+              </p>
+            </div>
+          )}
 
           {/* Amenities Checklist */}
           {room.amenities && room.amenities.length > 0 && (
-            <div style={{ marginBottom: '24px' }}>
+            <div>
               <h4 style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#0f172a', marginBottom: '10px' }}>Included Amenities</h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
                 {room.amenities.map((amenity, idx) => (
@@ -104,9 +114,11 @@ export default function RoomDetailsModal({ room, onClose, onBook }) {
               </div>
             </div>
           )}
+        </div>
 
-          {/* Footer Actions */}
-          <div style={{ display: 'flex', gap: '12px', pt: '16px', borderTop: '1px solid #e2e8f0' }}>
+        {/* Modal Sticky Footer */}
+        <div style={{ padding: '16px 28px', background: '#fff', borderTop: '1px solid #e2e8f0', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '12px' }}>
             <button className="btn btn-outline" onClick={onClose} style={{ flex: 1 }}>
               Close
             </button>
