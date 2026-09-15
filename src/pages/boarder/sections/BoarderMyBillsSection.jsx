@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronUp, QrCode, HelpCircle, X, RefreshCw
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { encryptData, decryptData, decryptObject } from '../../../lib/encryptionHelper'
 import { notifyLandlords } from '../../../lib/notifyHelper'
 import { sanitizeError, logError } from '../../../lib/errorHandler'
 
@@ -61,9 +62,10 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
         .maybeSingle()
 
       setBills(billsData || [])
-      setPendingPayments(pendingData || [])
+      setPendingPayments((pendingData || []).map(p => decryptObject(p, ['reference_number', 'notes', 'rejection_reason'])))
       if (settingsData) {
-        setPaymentSettings(settingsData)
+        const decSettings = decryptObject(settingsData, ['gcash_number', 'gcash_name', 'bank_account_number', 'bank_account_name'])
+        setPaymentSettings(decSettings)
         if (settingsData.gcash_enabled) setSelectedChannel('gcash')
         else if (settingsData.maya_enabled) setSelectedChannel('maya')
         else if (settingsData.bank_enabled) setSelectedChannel('bank')
@@ -81,7 +83,8 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
       setPayingBill(null) // toggle off if clicked again
       return
     }
-    const balance = Math.max(0, Number(bill.amount_due) - Number(bill.amount_paid || 0))
+    const billAmt = Number(bill.amount || 0)
+    const balance = bill.status === 'Paid' ? 0 : billAmt
     setPayingBill(bill)
     setAmount(balance > 0 ? balance : '')
     setRefNumber('')
@@ -122,7 +125,7 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
 
     try {
       const numAmount = parseFloat(amount)
-      const balance = Math.max(0, Number(payingBill.amount_due) - Number(payingBill.amount_paid || 0))
+      const balance = payingBill.status === 'Paid' ? 0 : Number(payingBill.amount || 0)
 
       if (isNaN(numAmount) || numAmount <= 0) {
         throw new Error('Please enter a valid payment amount.')
@@ -132,9 +135,15 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
         throw new Error(`Amount cannot exceed the remaining balance of ₱${balance.toLocaleString()}.`)
       }
 
-      if (!refNumber.trim() && selectedChannel !== 'cash') {
+      if (selectedChannel !== 'cash') {
         const channelName = selectedChannel === 'gcash' ? 'GCash' : selectedChannel === 'maya' ? 'Maya' : 'Bank Transfer'
-        throw new Error(`Please enter the ${channelName} Reference / Transaction Number.`)
+        const cleanRef = refNumber.replace(/\D/g, '')
+        if (!cleanRef) {
+          throw new Error(`Please enter the ${channelName} Reference / Transaction Number.`)
+        }
+        if (cleanRef.length !== 13) {
+          throw new Error(`The ${channelName} Reference Number must be exactly 13 numeric digits (currently ${cleanRef.length} digits).`)
+        }
       }
 
       let authId = currentUser?.id
@@ -157,14 +166,14 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
       const { error: insertErr } = await supabase.from('payments').insert({
         rental_id: rentalData.id,
         bill_id: payingBill.id,
+        user_id: userProfile?.id || null,
         amount: numAmount,
         payment_date: new Date().toISOString().split('T')[0],
         month_covered: payingBill.billing_month || new Date().toISOString().split('T')[0],
         method: methodLabel,
-        reference_number: refNumber.trim() || null,
+        reference_number: refNumber.trim() ? encryptData(refNumber.trim()) : null,
         proof_image_url: proofImage || null,
-        notes: notes.trim() || null,
-        submitted_by: userProfile?.id || null,
+        notes: notes.trim() ? encryptData(notes.trim()) : null,
         status: 'Pending'
       })
 
@@ -281,7 +290,7 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
                   Pay Bill: {formatBillingMonth(payingBill.billing_month)}
                 </h3>
                 <p style={{ fontSize: '0.8125rem', color: '#64748b', margin: 0 }}>
-                  Remaining Balance: <strong style={{ color: '#dc2626', fontSize: '0.9375rem' }}>₱{Math.max(0, Number(payingBill.amount_due) - Number(payingBill.amount_paid || 0)).toLocaleString()}</strong>
+                  Remaining Balance: <strong style={{ color: '#dc2626', fontSize: '0.9375rem' }}>₱{(payingBill.status === 'Paid' ? 0 : Number(payingBill.amount || 0)).toLocaleString()}</strong>
                 </p>
               </div>
             </div>
@@ -590,11 +599,11 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
                   type="number"
                   required
                   min="1"
-                  max={Math.max(0, Number(payingBill.amount_due) - Number(payingBill.amount_paid || 0))}
+                  max={payingBill.status === 'Paid' ? 0 : Number(payingBill.amount || 0)}
                   step="any"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  placeholder={`Remaining: ₱${Math.max(0, Number(payingBill.amount_due) - Number(payingBill.amount_paid || 0)).toLocaleString()}`}
+                  placeholder={`Remaining: ₱${(payingBill.status === 'Paid' ? 0 : Number(payingBill.amount || 0)).toLocaleString()}`}
                   style={{
                     width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0',
                     borderRadius: '8px', fontSize: '0.875rem', fontFamily: 'inherit'
@@ -610,15 +619,26 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
                   <input
                     type="text"
                     required
+                    maxLength={13}
+                    inputMode="numeric"
                     value={refNumber}
-                    onChange={(e) => setRefNumber(e.target.value)}
-                    placeholder="e.g. 1029 3847 5612"
+                    onChange={(e) => setRefNumber(e.target.value.replace(/\D/g, '').slice(0, 13))}
+                    placeholder="e.g. 1023993120934 (13 digits)"
                     style={{
-                      width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0',
+                      width: '100%', padding: '10px 12px',
+                      border: `1.5px solid ${refNumber && refNumber.length !== 13 ? '#ef4444' : '#e2e8f0'}`,
                       borderRadius: '8px', fontSize: '0.875rem', fontFamily: 'inherit',
                       letterSpacing: '0.04em', fontWeight: 600
                     }}
                   />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '4px' }}>
+                    <span style={{ color: refNumber && refNumber.length !== 13 ? '#ef4444' : '#64748b', fontWeight: 600 }}>
+                      {refNumber && refNumber.length !== 13 ? `⚠️ Must be exactly 13 digits (currently ${refNumber.length})` : 'Must be exactly 13 numeric digits'}
+                    </span>
+                    <span style={{ fontWeight: 700, color: refNumber.length === 13 ? '#166534' : '#64748b' }}>
+                      {refNumber.length}/13
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -731,8 +751,10 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {bills.map((bill, index) => {
             const s = getStatusStyle(bill.status)
-            const balance = Math.max(0, Number(bill.amount_due) - Number(bill.amount_paid || 0))
+            const billAmt = Number(bill.amount || 0)
             const isPaid = bill.status === 'Paid'
+            const amountPaid = isPaid ? billAmt : 0
+            const balance = isPaid ? 0 : billAmt
             const isPartial = bill.status === 'Partial'
             const isLatest = index === 0
             const isCurrentlySelected = payingBill?.id === bill.id
@@ -789,9 +811,9 @@ export default function BoarderMyBillsSection({ rentalData, currentUser }) {
                 {/* Bill Details */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0', border: '1px solid #f1f5f9', borderRadius: '10px', overflow: 'hidden' }}>
                   {[
-                    { label: 'Monthly Rent',  value: `₱${Number(bill.amount_due).toLocaleString()}` },
+                    { label: 'Monthly Rent',  value: `₱${billAmt.toLocaleString()}` },
                     { label: 'Due Date',       value: formatDate(bill.due_date) },
-                    { label: 'Amount Paid',    value: `₱${Number(bill.amount_paid || 0).toLocaleString()}`, highlight: Number(bill.amount_paid || 0) > 0 },
+                    { label: 'Amount Paid',    value: `₱${amountPaid.toLocaleString()}`, highlight: isPaid },
                     { label: 'Balance',        value: `₱${balance.toLocaleString()}`, urgent: !isPaid && balance > 0 },
                   ].map((row, i) => (
                     <div key={row.label} style={{

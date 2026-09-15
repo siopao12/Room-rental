@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { CheckCircle2, XCircle, Clock, Loader2, RefreshCw, FileText } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { decryptObject } from '../../../lib/encryptionHelper'
 import { createNotification } from '../../../lib/notifyHelper'
 import { sanitizeError, logError } from '../../../lib/errorHandler'
 
@@ -24,7 +25,14 @@ export default function ApplicationsSection({ currentUser }) {
       if (error) {
         console.error('RLS/fetch error on rental_applications:', error)
       }
-      setApplications(data || [])
+      const decrypted = (data || []).map(app => {
+        const decApp = decryptObject(app, ['emergency_contact_name', 'emergency_contact_phone', 'message', 'notes'])
+        if (decApp.applicant) {
+          decApp.applicant = decryptObject(decApp.applicant, ['phone', 'emergency_contact'])
+        }
+        return decApp
+      })
+      setApplications(decrypted)
     } catch (err) {
       console.error('Error fetching applications:', err)
     } finally {
@@ -45,25 +53,21 @@ export default function ApplicationsSection({ currentUser }) {
     setProcessingId(app.id)
     try {
       const landlordId = await getLandlordId()
-      await supabase.from('rental_applications').update({
-        status: 'Approved',
-        reviewed_by: landlordId,
-        reviewed_at: new Date().toISOString()
+      const { error: appUpdateErr } = await supabase.from('rental_applications').update({
+        status: 'Approved'
       }).eq('id', app.id)
+      if (appUpdateErr) throw appUpdateErr
 
       const startDate = new Date(app.move_in_date || Date.now())
-      const nextDueDate = new Date(startDate)
-      nextDueDate.setMonth(nextDueDate.getMonth() + 1)
 
-      const { data: rentalData } = await supabase.from('rentals').insert({
+      const { data: rentalData, error: rentInsertErr } = await supabase.from('rentals').insert({
         user_id: app.user_id,
         room_id: app.room_id,
-        application_id: app.id,
-        monthly_rent: app.rooms?.monthly_rent || 3500,
-        start_date: app.move_in_date,
-        next_due_date: nextDueDate.toISOString().split('T')[0],
+        start_date: app.move_in_date || new Date().toISOString().split('T')[0],
+        due_day: 5,
         status: 'Active'
       }).select().single()
+      if (rentInsertErr) throw rentInsertErr
 
       // Create first billing cycle for the new boarder
       if (rentalData) {
@@ -72,16 +76,16 @@ export default function ApplicationsSection({ currentUser }) {
         const dueDate = new Date(billingMonth)
         dueDate.setDate(5) // due on 5th of month
 
-        await supabase.from('bills').insert({
+        const { error: billInsertErr } = await supabase.from('bills').insert({
           rental_id: rentalData.id,
+          user_id: app.user_id,
           billing_month: billingMonth.toISOString().split('T')[0],
-          amount_due: app.rooms?.monthly_rent || 3500,
-          amount_paid: 0,
+          amount: app.rooms?.monthly_rent || 3500,
           due_date: dueDate.toISOString().split('T')[0],
           status: 'Unpaid'
         })
+        if (billInsertErr) console.error('Error inserting initial bill:', billInsertErr)
       }
-
 
       await supabase.from('rooms').update({ status: 'Occupied' }).eq('id', app.room_id)
       await supabase.from('users').update({ role_id: 3 }).eq('id', app.user_id)
@@ -91,7 +95,7 @@ export default function ApplicationsSection({ currentUser }) {
         action: 'APPROVE_APPLICATION',
         target_type: 'RENTAL_APPLICATIONS',
         target_id: app.id,
-        description: `Landlord approved application #${app.id} for Room ${app.rooms?.room_number} & promoted user to Boarder`
+        description: `Landlord approved application #${app.id} for Room ${app.rooms?.room_number || app.room_id} & promoted user to Boarder`
       })
 
       // Notify the applicant their application was approved
@@ -115,18 +119,17 @@ export default function ApplicationsSection({ currentUser }) {
     setProcessingId(app.id)
     try {
       const landlordId = await getLandlordId()
-      await supabase.from('rental_applications').update({
-        status: 'Rejected',
-        reviewed_by: landlordId,
-        reviewed_at: new Date().toISOString()
+      const { error: rejectErr } = await supabase.from('rental_applications').update({
+        status: 'Rejected'
       }).eq('id', app.id)
+      if (rejectErr) throw rejectErr
 
       await supabase.from('audit_logs').insert({
         user_id: landlordId,
         action: 'REJECT_APPLICATION',
         target_type: 'RENTAL_APPLICATIONS',
         target_id: app.id,
-        description: `Landlord rejected application #${app.id} for Room ${app.rooms?.room_number}`
+        description: `Landlord rejected application #${app.id} for Room ${app.rooms?.room_number || app.room_id}`
       })
 
       // Notify the applicant their application was rejected

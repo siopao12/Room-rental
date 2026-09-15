@@ -105,10 +105,10 @@ export default function BoarderMyRoomSection({ rentalData }) {
           <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', marginBottom: '18px' }}>Room Details</h3>
           {[
             { label: 'Room Type',    value: (room.room_type || room.type || '—').toUpperCase() },
-            { label: 'Floor',        value: room.floor || '—' },
-            { label: 'Size',         value: room.size || '—' },
+            { label: 'Floor',        value: room.floor_number || room.floor || '—' },
+            { label: 'Size',         value: room.size_sqm ? `${room.size_sqm} m²` : (room.size ? `${room.size} m²` : '—') },
             { label: 'Capacity',     value: room.capacity ? `${room.capacity} Person${room.capacity > 1 ? 's' : ''}` : '—' },
-            { label: 'Monthly Rent', value: `₱${Number(rentalData.monthly_rent).toLocaleString()}` },
+            { label: 'Monthly Rent', value: `₱${Number(room.monthly_rent || room.price || rentalData.monthly_rent || 0).toLocaleString()}` },
           ].map(row => (
             <div key={row.label} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',

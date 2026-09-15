@@ -37,9 +37,9 @@ const CSV_EXPORT_CONFIGS = [
     description: 'Active and past rental records',
     icon: '🏠',
     color: '#059669', bg: '#d1fae5', border: '#6ee7b7',
-    query: () => supabase.from('rentals').select('id, monthly_rent, start_date, next_due_date, status, rooms(room_number), boarder:users!user_id(name, email)').order('created_at', { ascending: false }),
-    columns: ['id', 'boarder_name', 'boarder_email', 'room', 'monthly_rent', 'start_date', 'next_due_date', 'status'],
-    transform: (rows) => rows.map(r => [r.id, r.boarder?.name || '', r.boarder?.email || '', r.rooms?.room_number || '', r.monthly_rent, r.start_date, r.next_due_date, r.status]),
+    query: () => supabase.from('rentals').select('id, start_date, due_day, status, rooms(room_number, price), boarder:users!user_id(name, email)').order('created_at', { ascending: false }),
+    columns: ['id', 'boarder_name', 'boarder_email', 'room', 'monthly_rent', 'start_date', 'due_day', 'status'],
+    transform: (rows) => rows.map(r => [r.id, r.boarder?.name || '', r.boarder?.email || '', r.rooms?.room_number || '', r.rooms?.price || '', r.start_date, r.due_day || '', r.status]),
   },
   {
     key: 'payments',
@@ -57,9 +57,9 @@ const CSV_EXPORT_CONFIGS = [
     description: 'All billing records by boarder',
     icon: '🧾',
     color: '#7c3aed', bg: '#ede9fe', border: '#c4b5fd',
-    query: () => supabase.from('bills').select('id, billing_month, amount_due, amount_paid, due_date, status, rentals(rooms(room_number), boarder:users!user_id(name))').order('billing_month', { ascending: false }),
-    columns: ['id', 'boarder', 'room', 'billing_month', 'amount_due', 'amount_paid', 'due_date', 'status'],
-    transform: (rows) => rows.map(r => [r.id, r.rentals?.boarder?.name || '', r.rentals?.rooms?.room_number || '', r.billing_month, r.amount_due, r.amount_paid, r.due_date, r.status]),
+    query: () => supabase.from('bills').select('id, billing_month, amount, due_date, status, rentals(rooms(room_number), boarder:users!user_id(name))').order('billing_month', { ascending: false }),
+    columns: ['id', 'boarder', 'room', 'billing_month', 'amount', 'due_date', 'status'],
+    transform: (rows) => rows.map(r => [r.id, r.rentals?.boarder?.name || '', r.rentals?.rooms?.room_number || '', r.billing_month, r.amount, r.due_date, r.status]),
   },
   {
     key: 'applications',
@@ -67,9 +67,9 @@ const CSV_EXPORT_CONFIGS = [
     description: 'All rental applications and their outcomes',
     icon: '📄',
     color: '#d97706', bg: '#fef3c7', border: '#fde68a',
-    query: () => supabase.from('rental_applications').select('id, move_in_date, status, created_at, reviewed_at, rooms(room_number), applicant:users!user_id(name, email)').order('created_at', { ascending: false }),
-    columns: ['id', 'applicant_name', 'applicant_email', 'room', 'move_in_date', 'status', 'reviewed_at', 'created_at'],
-    transform: (rows) => rows.map(r => [r.id, r.applicant?.name || '', r.applicant?.email || '', r.rooms?.room_number || '', r.move_in_date, r.status, r.reviewed_at || '', r.created_at]),
+    query: () => supabase.from('rental_applications').select('id, move_in_date, status, created_at, rooms(room_number), applicant:users!user_id(name, email)').order('created_at', { ascending: false }),
+    columns: ['id', 'applicant_name', 'applicant_email', 'room', 'move_in_date', 'status', 'created_at'],
+    transform: (rows) => rows.map(r => [r.id, r.applicant?.name || '', r.applicant?.email || '', r.rooms?.room_number || '', r.move_in_date, r.status, r.created_at]),
   },
   {
     key: 'audit_logs',
@@ -295,7 +295,7 @@ export default function DataExportSection({ currentUser, userProfile }) {
           .map(c => `${c} = EXCLUDED.${c}`)
           .join(', ')
 
-        sql += `INSERT INTO public.${table} (${columns.join(', ')}) VALUES (${values.join(', ')})`
+        sql += `INSERT INTO public.${table} (${columns.join(', ')}) OVERRIDING SYSTEM VALUE VALUES (${values.join(', ')})`
         if (columns.includes('id') && updates) {
           sql += ` ON CONFLICT (id) DO UPDATE SET ${updates};\n`
         } else {
@@ -319,7 +319,7 @@ export default function DataExportSection({ currentUser, userProfile }) {
     setTimeout(() => setRestoreSuccess(''), 6000)
   }
 
-  // ─── 4. IN-APP DATABASE RESTORE (UPSERT) ─────────────────────────────────────
+  // ─── 4. IN-APP DATABASE RESTORE (DIFF & RESTORE MISSING RECORDS) ────────────
   const handleInAppRestore = async () => {
     if (!parsedBackup || confirmInput.trim().toUpperCase() !== 'RESTORE') return
     setRestoring(true)
@@ -335,12 +335,23 @@ export default function DataExportSection({ currentUser, userProfile }) {
       for (const table of order) {
         const rows = parsedBackup.tables[table]
         if (Array.isArray(rows) && rows.length > 0) {
-          // Upsert in batches
-          const { error } = await supabase.from(table).upsert(rows, { onConflict: 'id' })
-          if (error) {
-            logError(`handleInAppRestore.${table}`, error)
-          } else {
-            restoredCount += rows.length
+          // Fetch existing IDs from Supabase for this table to detect missing records
+          const { data: existingData } = await supabase.from(table).select('id')
+          const existingIds = new Set((existingData || []).map(r => r.id))
+
+          // Filter rows in backup that are missing in the current database
+          const missingRows = rows.filter(r => !existingIds.has(r.id))
+
+          if (missingRows.length > 0) {
+            // Omit 'id' so PostgreSQL auto-generates the identity PK without 428C9 error
+            const cleanRows = missingRows.map(({ id, ...rest }) => rest)
+            const { error: insertErr } = await supabase.from(table).insert(cleanRows)
+
+            if (!insertErr) {
+              restoredCount += missingRows.length
+            } else {
+              logError(`handleInAppRestore.${table}`, insertErr)
+            }
           }
         }
       }
@@ -353,12 +364,17 @@ export default function DataExportSection({ currentUser, userProfile }) {
             user_id: adminId,
             action: 'RESTORE_DATA',
             target_type: 'SYSTEM_BACKUP',
-            description: `Admin performed database recovery from snapshot ${parsedBackup.metadata?.checksum || ''} (${restoredCount} records restored)`
+            description: `Admin performed database recovery from snapshot ${parsedBackup.metadata?.checksum || ''} (${restoredCount} missing records restored)`
           })
         }
       } catch (_) { }
 
-      setRestoreSuccess(`Recovery completed! Successfully synchronized ${restoredCount} records.`)
+      if (restoredCount > 0) {
+        setRestoreSuccess(`Recovery completed! Successfully restored ${restoredCount} missing record(s).`)
+      } else {
+        setRestoreSuccess('Recovery completed! All records in the backup archive are already present in the database.')
+      }
+
       setParsedBackup(null)
       setUploadedFile(null)
       setConfirmInput('')

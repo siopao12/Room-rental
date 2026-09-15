@@ -13,14 +13,26 @@ export default function BoarderOverviewSection({ userProfile, rentalData, onNavi
 
   const fetchCurrentBill = async () => {
     try {
-      const { data } = await supabase
+      let { data } = await supabase
         .from('bills')
         .select('*')
         .eq('rental_id', rentalData.id)
         .in('status', ['Unpaid', 'Partial'])
-        .order('billing_month', { ascending: false })
+        .order('billing_month', { ascending: true })
         .limit(1)
         .maybeSingle()
+
+      if (!data) {
+        const { data: latest } = await supabase
+          .from('bills')
+          .select('*')
+          .eq('rental_id', rentalData.id)
+          .order('billing_month', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        data = latest
+      }
+
       setCurrentBill(data || null)
     } catch (err) {
       console.error('Error fetching current bill:', err)
@@ -68,7 +80,7 @@ export default function BoarderOverviewSection({ userProfile, rentalData, onNavi
           <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '8px' }}>Hello, {displayName}! 👋</h1>
           {room ? (
             <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9375rem' }}>
-              You're in <strong style={{ color: '#a5b4fc' }}>Room {room.room_number}</strong> · ₱{Number(rentalData.monthly_rent).toLocaleString()}/month
+              You're in <strong style={{ color: '#a5b4fc' }}>Room {room.room_number}</strong> · ₱{Number(rentalData.rooms?.monthly_rent || rentalData.rooms?.price || rentalData.monthly_rent || 0).toLocaleString()}/month
             </p>
           ) : (
             <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.9375rem' }}>No active rental found.</p>
@@ -82,7 +94,7 @@ export default function BoarderOverviewSection({ userProfile, rentalData, onNavi
           {[
             {
               label: 'Monthly Rent',
-              value: `₱${Number(rentalData.monthly_rent).toLocaleString()}`,
+              value: `₱${Number(rentalData.rooms?.monthly_rent || rentalData.rooms?.price || rentalData.monthly_rent || 0).toLocaleString()}`,
               icon: <Home size={20} />,
               color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe'
             },
@@ -147,21 +159,28 @@ export default function BoarderOverviewSection({ userProfile, rentalData, onNavi
               <div style={{ fontSize: '0.8125rem', color: '#64748b', fontWeight: 600, marginBottom: '16px' }}>
                 {formatBillingMonth(currentBill.billing_month)}
               </div>
-              {[
-                { label: 'Monthly Rent',  value: `₱${Number(currentBill.amount_due).toLocaleString()}` },
-                { label: 'Due Date',      value: currentBill.due_date || '—' },
-                { label: 'Amount Paid',   value: `₱${Number(currentBill.amount_paid || 0).toLocaleString()}` },
-                { label: 'Balance',       value: `₱${Number(currentBill.amount_due - (currentBill.amount_paid || 0)).toLocaleString()}` },
-              ].map(row => (
-                <div key={row.label} style={{
-                  display: 'flex', justifyContent: 'space-between',
-                  padding: '8px 0', borderBottom: '1px solid #f1f5f9',
-                  fontSize: '0.875rem'
-                }}>
-                  <span style={{ color: '#64748b' }}>{row.label}</span>
-                  <span style={{ fontWeight: 700, color: '#0f172a' }}>{row.value}</span>
-                </div>
-              ))}
+              {(() => {
+                const billAmt = Number(currentBill.amount || 0)
+                const isPaid = currentBill.status === 'Paid'
+                const amountPaid = isPaid ? billAmt : 0
+                const balance = isPaid ? 0 : billAmt
+
+                return [
+                  { label: 'Monthly Rent',  value: `₱${billAmt.toLocaleString()}` },
+                  { label: 'Due Date',      value: currentBill.due_date || '—' },
+                  { label: 'Amount Paid',   value: `₱${amountPaid.toLocaleString()}` },
+                  { label: 'Balance',       value: `₱${balance.toLocaleString()}` },
+                ].map(row => (
+                  <div key={row.label} style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    padding: '8px 0', borderBottom: '1px solid #f1f5f9',
+                    fontSize: '0.875rem'
+                  }}>
+                    <span style={{ color: '#64748b' }}>{row.label}</span>
+                    <span style={{ fontWeight: 700, color: '#0f172a' }}>{row.value}</span>
+                  </div>
+                ))
+              })()}
               <div style={{ marginTop: '16px', textAlign: 'center' }}>
                 {(() => {
                   const s = getStatusStyle(currentBill.status)

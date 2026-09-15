@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { X, ClipboardList, Clock, CheckCircle2, XCircle, Calendar, Home, ArrowRight, RefreshCw, Loader2, Sparkles, Building2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import { decryptObject } from '../lib/encryptionHelper'
 
 export default function MyApplicationsModal({ isOpen, onClose, user, userProfile }) {
   const navigate = useNavigate()
@@ -41,7 +42,8 @@ export default function MyApplicationsModal({ isOpen, onClose, user, userProfile
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setApplications(data || [])
+      const decrypted = (data || []).map(a => decryptObject(a, ['emergency_contact_name', 'emergency_contact_phone', 'message', 'notes']))
+      setApplications(decrypted)
     } catch (err) {
       console.error('Error loading applicant applications:', err)
     } finally {

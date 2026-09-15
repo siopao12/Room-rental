@@ -37,13 +37,15 @@ export default function BoarderMyRentalSection({ rentalData }) {
     })
   }
 
+  const rentRate = Number(rentalData.rooms?.monthly_rent || rentalData.rooms?.price || rentalData.monthly_rent || 0)
+
   const infoRows = [
     { label: 'Rental Status',      value: isScheduledMoveOut ? 'Scheduled Move-Out' : (rentalData.status || 'Active'), icon: <CheckCircle2 size={16} />, highlight: isActive },
     { label: 'Move-in Date',       value: formatDate(rentalData.start_date),     icon: <Calendar size={16} /> },
     { label: 'Rental Start Date',  value: formatDate(rentalData.start_date),     icon: <Calendar size={16} /> },
     { label: 'Next Due Date',      value: formatDate(rentalData.next_due_date),  icon: <Clock size={16} />, urgent: true },
     { label: 'Move-out Date',      value: isScheduledMoveOut ? formatDate(moveOutDateVal) : 'None Scheduled', icon: <Calendar size={16} />, highlight: isScheduledMoveOut },
-    { label: 'Monthly Rental Rate', value: `₱${Number(rentalData.monthly_rent).toLocaleString()}`, icon: <DollarSign size={16} />, money: true },
+    { label: 'Monthly Rental Rate', value: `₱${rentRate.toLocaleString()}`, icon: <DollarSign size={16} />, money: true },
   ]
 
   return (
@@ -76,7 +78,7 @@ export default function BoarderMyRentalSection({ rentalData }) {
             {isScheduledMoveOut ? `📅 Move-Out Scheduled (${formatDate(moveOutDateVal)})` : isActive ? '✓ Active Lease' : rentalData.status || 'Unknown'}
           </div>
           <div style={{ fontSize: '0.8125rem', color: '#64748b', marginTop: '2px' }}>
-            Room {rentalData.rooms?.room_number} · ₱{Number(rentalData.monthly_rent).toLocaleString()}/month
+            Room {rentalData.rooms?.room_number} · ₱{rentRate.toLocaleString()}/month
           </div>
         </div>
       </div>

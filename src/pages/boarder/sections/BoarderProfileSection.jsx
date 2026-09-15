@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { User, Mail, Phone, Lock, Save, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff, XCircle } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { encryptData, decryptData } from '../../../lib/encryptionHelper'
 
 // ─── Validation Helpers ───────────────────────────────────────────────────────
 
@@ -99,7 +100,7 @@ export default function BoarderProfileSection({ currentUser, userProfile }) {
   useEffect(() => {
     setName(userProfile?.name || '')
     setEmail(currentUser?.email || userProfile?.email || '')
-    setPhone(userProfile?.phone || '')
+    setPhone(decryptData(userProfile?.phone) || '')
   }, [userProfile, currentUser])
 
   // ── Profile Save ──────────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ export default function BoarderProfileSection({ currentUser, userProfile }) {
 
       const { error } = await supabase
         .from('users')
-        .update({ name: name.trim(), email: trimmedEmail, phone: phone.trim() })
+        .update({ name: name.trim(), email: trimmedEmail, phone: encryptData(phone.trim()) })
         .eq('auth_id', currentUser.id)
       if (error) throw error
 

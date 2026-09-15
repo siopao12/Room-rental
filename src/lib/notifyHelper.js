@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { encryptData } from './encryptionHelper'
 
 /**
  * notifyHelper.js
@@ -23,7 +24,7 @@ import { supabase } from './supabaseClient'
 async function _insertNotifications(userIds, title, message, type) {
   if (!userIds || userIds.length === 0) return
 
-  const rows = userIds.map(id => ({ user_id: id, title, message, type }))
+  const rows = userIds.map(id => ({ user_id: id, title, message: encryptData(message), type }))
   const { error } = await supabase.from('notifications').insert(rows)
   if (error) {
     console.error('[notify] insert error:', error.message, '| code:', error.code)
@@ -32,14 +33,31 @@ async function _insertNotifications(userIds, title, message, type) {
 
 // ─── Core: fetch user IDs for given roles via RPC ────────────────────────────
 async function _getUserIdsByRoles(roleNames) {
-  const { data, error } = await supabase
-    .rpc('get_user_ids_by_role', { role_names: roleNames })
+  try {
+    const { data, error } = await supabase
+      .rpc('get_user_ids_by_role', { role_names: roleNames })
 
-  if (error) {
-    console.error('[notify] RPC get_user_ids_by_role error:', error.message)
-    return []
+    if (!error && data) {
+      return (data || []).map(row => row.id)
+    }
+  } catch (_) { }
+
+  // Fallback: Direct database query if RPC is not installed in Supabase
+  try {
+    const { data: roleData } = await supabase.from('roles').select('id, name').in('name', roleNames)
+    if (roleData && roleData.length > 0) {
+      const roleIds = roleData.map(r => r.id)
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id')
+        .in('role_id', roleIds)
+        .or('is_active.is.null,is_active.eq.true')
+      return (usersData || []).map(u => u.id)
+    }
+  } catch (err) {
+    console.error('[notify] Fallback query error:', err)
   }
-  return (data || []).map(row => row.id)
+  return []
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,7 +71,7 @@ async function _getUserIdsByRoles(roleNames) {
 export async function createNotification(userId, title, message, type = 'info') {
   if (!userId) return
   const { error } = await supabase.from('notifications').insert({
-    user_id: userId, title, message, type,
+    user_id: userId, title, message: encryptData(message), type,
   })
   if (error) console.error('[notify] createNotification error:', error.message)
 }

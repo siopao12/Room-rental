@@ -20,12 +20,24 @@ export default function AnnouncementsSection({ currentUser }) {
     try {
       const { data, error } = await supabase
         .from('announcements')
-        .select('*, poster:users!posted_by(name, email)')
+        .select('*')
         .order('created_at', { ascending: false })
       if (error) {
         console.error('Error fetching announcements:', error)
+        setAnnouncements([])
+      } else if (data) {
+        const userIds = [...new Set(data.map(a => a.posted_by || a.created_by).filter(Boolean))]
+        let userMap = {}
+        if (userIds.length > 0) {
+          const { data: uData } = await supabase.from('users').select('id, name, email').in('id', userIds)
+          if (uData) uData.forEach(u => { userMap[u.id] = u })
+        }
+        const enriched = data.map(a => ({
+          ...a,
+          poster: userMap[a.posted_by || a.created_by] || null
+        }))
+        setAnnouncements(enriched)
       }
-      setAnnouncements(data || [])
     } catch (err) {
       console.error('Error fetching announcements:', err)
     } finally {

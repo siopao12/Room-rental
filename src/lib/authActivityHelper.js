@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient'
+import { encryptData } from './encryptionHelper'
 import { logError } from './errorHandler'
 
 /**
@@ -44,12 +45,17 @@ export async function recordLoginEvent(user, profile) {
     // 2. Insert into audit_logs
     if (userId) {
       try {
+        const clientIp = typeof window !== 'undefined'
+          ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '127.0.0.1 (Localhost)' : window.location.hostname)
+          : '127.0.0.1 (Localhost)'
+
         await supabase.from('audit_logs').insert({
           user_id: userId,
           action: 'LOGIN',
           target_type: 'AUTH_SESSION',
           target_id: userId,
-          description: `${roleName} logged in: ${userName} (${userEmail})`
+          description: `${roleName} logged in: ${userName} (${userEmail})`,
+          ip_address: encryptData(clientIp)
         })
       } catch (e) {
         logError('recordLoginEvent.audit_logs', e)
@@ -75,12 +81,17 @@ export async function recordLogoutEvent(user, profile) {
     const roleName = profile?.roles?.name || (typeof profile?.role_name === 'string' ? profile.role_name : 'User')
 
     if (userId) {
+      const clientIp = typeof window !== 'undefined'
+        ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '127.0.0.1 (Localhost)' : window.location.hostname)
+        : '127.0.0.1 (Localhost)'
+
       await supabase.from('audit_logs').insert({
         user_id: userId,
         action: 'LOGOUT',
         target_type: 'AUTH_SESSION',
         target_id: userId,
-        description: `${roleName} signed out: ${userName} (${userEmail})`
+        description: `${roleName} signed out: ${userName} (${userEmail})`,
+        ip_address: encryptData(clientIp)
       })
     }
   } catch (err) {

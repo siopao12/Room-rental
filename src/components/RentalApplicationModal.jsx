@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { X, Calendar, Phone, User, MessageSquare, Loader2, Send, CheckCircle2, XCircle } from 'lucide-react'
 import { supabase } from '../lib/supabaseClient'
+import { encryptData } from '../lib/encryptionHelper'
 import { notifyLandlords } from '../lib/notifyHelper'
 import { sanitizeError, logError } from '../lib/errorHandler'
 
@@ -156,9 +157,9 @@ export default function RentalApplicationModal({ isOpen, onClose, room, currentU
           user_id: userData.id,
           room_id: room.id,
           move_in_date: moveInDate,
-          emergency_contact_name: emergencyName,
-          emergency_contact_phone: emergencyPhone,
-          message: message,
+          emergency_contact_name: encryptData(emergencyName),
+          emergency_contact_phone: encryptData(emergencyPhone),
+          message: encryptData(message),
           status: 'Pending'
         })
         .select()

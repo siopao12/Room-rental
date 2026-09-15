@@ -77,6 +77,32 @@ export default function BoarderDashboard() {
         .maybeSingle()
 
       if (rental) {
+        // Ensure monthly_rent is derived from associated rooms record
+        rental.monthly_rent = rental.rooms?.monthly_rent || rental.rooms?.price || rental.monthly_rent || 0
+
+        // Fetch the earliest unpaid bill for this rental to accurately display Next Due Date
+        const { data: upcomingBill } = await supabase
+          .from('bills')
+          .select('due_date')
+          .eq('rental_id', rental.id)
+          .eq('status', 'Unpaid')
+          .order('billing_month', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+
+        if (upcomingBill?.due_date) {
+          rental.next_due_date = upcomingBill.due_date
+        } else {
+          // Fallback if no unpaid bill found
+          const dueDay = rental.due_day || 5
+          const now = new Date()
+          let due = new Date(now.getFullYear(), now.getMonth(), dueDay)
+          if (now > due) {
+            due = new Date(now.getFullYear(), now.getMonth() + 1, dueDay)
+          }
+          rental.next_due_date = due.toISOString().split('T')[0]
+        }
+
         // Fetch latest move-out audit log to check if move-out is active or cancelled
         const { data: latestMoveOut } = await supabase
           .from('audit_logs')

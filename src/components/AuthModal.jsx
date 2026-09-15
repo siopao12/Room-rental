@@ -30,8 +30,14 @@ const STRENGTH_COLORS = ['', '#ef4444', '#f97316', '#eab308', '#22c55e']
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
-  const [tab, setTab] = useState('login') // 'login' | 'register' | 'forgot'
+export default function AuthModal({
+  isOpen,
+  onClose,
+  onAuthSuccess,
+  initialTab = 'login',
+  initialSuccessMsg = ''
+}) {
+  const [tab, setTab] = useState(initialTab)
 
   // Registration name fields
   const [firstName, setFirstName] = useState('')
@@ -54,7 +60,14 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   // Status & loading
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  const [successMsg, setSuccessMsg] = useState('')
+  const [successMsg, setSuccessMsg] = useState(initialSuccessMsg)
+
+  React.useEffect(() => {
+    if (isOpen) {
+      if (initialTab) setTab(initialTab)
+      if (initialSuccessMsg) setSuccessMsg(initialSuccessMsg)
+    }
+  }, [isOpen, initialTab, initialSuccessMsg])
 
   if (!isOpen) return null
 
@@ -197,7 +210,10 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { full_name: assembledFullName } }
+          options: {
+            data: { full_name: assembledFullName },
+            emailRedirectTo: `${window.location.origin}/`
+          }
         })
 
         if (error) throw error
@@ -208,11 +224,14 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           return
         }
 
-        if (data.session) {
+        if (data.session && data.user?.confirmed_at) {
           setSuccessMsg('Account created and logged in!')
           setTimeout(() => { onAuthSuccess(data.user); onClose() }, 350)
         } else {
-          setSuccessMsg('Account registered successfully! Please log in.')
+          if (data.session) {
+            await supabase.auth.signOut()
+          }
+          setSuccessMsg('Account registered successfully! Please check your email to verify your account before logging in.')
           setTab('login')
         }
       }
@@ -243,7 +262,12 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     <div className={`modal-overlay ${isOpen ? 'active' : ''}`} onClick={onClose}>
       <div
         className="modal-content"
-        style={{ maxWidth: tab === 'register' ? '540px' : '440px', transition: 'all 0.3s ease' }}
+        style={{
+          maxWidth: tab === 'register' ? '540px' : '440px',
+          maxHeight: 'calc(100vh - 48px)',
+          overflowY: 'auto',
+          transition: 'all 0.3s ease'
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <button className="modal-close" onClick={onClose} aria-label="Close modal">

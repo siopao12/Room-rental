@@ -15,6 +15,7 @@ import LandlordDashboard from './pages/landlord/LandlordDashboard'
 import BoarderDashboard from './pages/boarder/BoarderDashboard'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import { supabase } from './lib/supabaseClient'
+import { decryptObject } from './lib/encryptionHelper'
 import { Search, CreditCard, Bell, Phone, Mail, Loader2 } from 'lucide-react'
 import NotFoundPage from './pages/NotFoundPage'
 import { useSessionSecurity } from './hooks/useSessionSecurity'
@@ -194,6 +195,8 @@ function LandingPage() {
 
   // Modals state
   const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [authModalTab, setAuthModalTab] = useState('login')
+  const [authModalSuccessMsg, setAuthModalSuccessMsg] = useState('')
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false)
   const [myApplicationsOpen, setMyApplicationsOpen] = useState(false)
   const [selectedDetailRoom, setSelectedDetailRoom] = useState(null)
@@ -286,12 +289,14 @@ function LandingPage() {
           })
         } catch (_) { }
 
-        setUserProfile(newUser)
-        return newUser
+        const decryptedNewUser = decryptObject(newUser, ['phone', 'emergency_contact'])
+        setUserProfile(decryptedNewUser)
+        return decryptedNewUser
       }
 
-      setUserProfile(data)
-      return data
+      const decryptedData = decryptObject(data, ['phone', 'emergency_contact'])
+      setUserProfile(decryptedData)
+      return decryptedData
     } catch (err) {
       console.error('Error fetching user profile:', err)
       return null
@@ -302,24 +307,44 @@ function LandingPage() {
   useEffect(() => {
     fetchRooms()
 
-    // ── Capture recovery state SYNCHRONOUSLY before Supabase SDK clears the hash ──
-    // The Supabase SDK asynchronously clears the URL hash after extracting tokens.
-    // Re-reading window.location.hash inside an async callback (after await) will
-    // return an empty string — causing the dashboard redirect to fire erroneously.
+    // ── Capture recovery & verification state SYNCHRONOUSLY ──
     const isRecoveryFlow =
       window.location.hash.includes('type=recovery') ||
       window.location.href.includes('type=recovery')
+
+    const isVerificationFlow =
+      /type=(signup|email_change|invite|email_confirmation|confirmation)/i.test(
+        window.location.hash + window.location.search
+      )
 
     if (isRecoveryFlow) {
       setResetPasswordOpen(true)
     }
 
+    if (isVerificationFlow) {
+      // User clicked an email confirmation link from Gmail.
+      // Sign out immediately so they are NOT auto-logged in,
+      // and prompt them to log in manually.
+      supabase.auth.signOut().then(() => {
+        setUser(null)
+        setUserProfile(null)
+        if (window.history?.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname)
+        } else {
+          window.location.hash = ''
+        }
+        setAuthModalTab('login')
+        setAuthModalSuccessMsg('Email verified successfully! Please sign in with your account credentials.')
+        setAuthModalOpen(true)
+      })
+      return
+    }
+
     // On initial load: restore session without causing a flash
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
+      if (isVerificationFlow) return
 
-        // If in password recovery flow, do NOT update user state — the navbar
-        // must stay in its logged-out appearance while the reset modal is open.
+      if (session?.user) {
         if (isRecoveryFlow) {
           setResetPasswordOpen(true)
           return
@@ -342,7 +367,13 @@ function LandingPage() {
     })
 
     // onAuthStateChange handles sign-out and PASSWORD_RECOVERY events
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (isVerificationFlow) {
+        await supabase.auth.signOut()
+        setUser(null)
+        setUserProfile(null)
+        return
+      }
       if (event === 'PASSWORD_RECOVERY') {
         setResetPasswordOpen(true)
       } else if (!session?.user) {
@@ -546,8 +577,13 @@ function LandingPage() {
       {/* Auth Modal */}
       <AuthModal
         isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
+        onClose={() => {
+          setAuthModalOpen(false)
+          setAuthModalSuccessMsg('')
+        }}
         onAuthSuccess={handleAuthSuccess}
+        initialTab={authModalTab}
+        initialSuccessMsg={authModalSuccessMsg}
       />
 
       {/* Reset Password Modal (Recovery Link) */}

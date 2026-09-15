@@ -4,6 +4,7 @@ import {
   ShieldCheck, LogIn, LogOut, Clock, Smartphone, Laptop, User, ShieldAlert
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { decryptObject } from '../../../lib/encryptionHelper'
 import { logError } from '../../../lib/errorHandler'
 
 const ACTION_COLORS = {
@@ -26,6 +27,7 @@ const ACTION_COLORS = {
   LOGOUT: { bg: '#f1f5f9', color: '#475569' },
   CREATE_BACKUP: { bg: '#eef2ff', color: '#4338ca' },
   RESTORE_DATA: { bg: '#fef3c7', color: '#92400e' },
+  UPDATE_PAYMENT_SETTINGS: { bg: '#e0e7ff', color: '#3730a3' },
 }
 
 const ROLE_COLORS = {
@@ -74,8 +76,16 @@ export default function AdminAuditLogsSection() {
         return
       }
 
+      const decAudit = (auditData || []).map(l => {
+        const d = decryptObject(l, ['details', 'ip_address'])
+        if (!d.ip_address) {
+          d.ip_address = '127.0.0.1 (Localhost)'
+        }
+        return d
+      })
+
       // 2. Fetch associated user profile info safely in memory
-      const userIds = [...new Set((auditData || []).map(l => l.user_id).filter(Boolean))]
+      const userIds = [...new Set(decAudit.map(l => l.user_id).filter(Boolean))]
       let userMap = {}
 
       if (userIds.length > 0) {
@@ -92,7 +102,7 @@ export default function AdminAuditLogsSection() {
       }
 
       // 3. Attach user objects to logs
-      const enriched = (auditData || []).map(log => ({
+      const enriched = decAudit.map(log => ({
         ...log,
         users: userMap[log.user_id] || null
       }))
@@ -285,7 +295,7 @@ export default function AdminAuditLogsSection() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
                   <thead style={{ background: '#f8fafc' }}>
                     <tr>
-                      {['Action', 'User', 'Description', 'Target', 'Time'].map(h => (
+                      {['Action', 'User', 'Description', 'IP Address', 'Target', 'Time'].map(h => (
                         <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -320,6 +330,11 @@ export default function AdminAuditLogsSection() {
                           </td>
                           <td style={{ padding: '10px 14px', color: '#475569', maxWidth: '320px' }}>
                             <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.description}</div>
+                          </td>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                            <span style={{ background: '#f1f5f9', color: '#475569', padding: '3px 7px', borderRadius: '5px', fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 600 }}>
+                              {log.ip_address}
+                            </span>
                           </td>
                           <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: '#64748b' }}>
                             {log.target_type && <span>{log.target_type}{log.target_id ? ` #${log.target_id}` : ''}</span>}
@@ -449,7 +464,7 @@ export default function AdminAuditLogsSection() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
                 <thead style={{ background: '#f8fafc' }}>
                   <tr>
-                    {['Event Type', 'User', 'Role', 'Activity Description', 'Time'].map(h => (
+                    {['Event Type', 'User', 'Role', 'IP Address', 'Activity Description', 'Time'].map(h => (
                       <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 700, color: '#475569', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -494,6 +509,13 @@ export default function AdminAuditLogsSection() {
                             color: roleCfg.color, border: `1px solid ${roleCfg.border}`
                           }}>
                             {roleName}
+                          </span>
+                        </td>
+
+                        {/* IP Address */}
+                        <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                          <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '3px 8px', borderRadius: '5px', fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 600 }}>
+                            {log.ip_address}
                           </span>
                         </td>
 

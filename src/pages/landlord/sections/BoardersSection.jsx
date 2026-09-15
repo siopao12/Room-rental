@@ -4,6 +4,7 @@ import {
   Calendar, LogOut, CheckCircle2, AlertTriangle, X, Clock
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { decryptObject } from '../../../lib/encryptionHelper'
 import { createNotification } from '../../../lib/notifyHelper'
 import { sanitizeError, logError } from '../../../lib/errorHandler'
 
@@ -69,7 +70,8 @@ export default function BoardersSection() {
         })
       }
 
-      setBoarders(boarderData || [])
+      const decryptedBoarders = (boarderData || []).map(b => decryptObject(b, ['phone', 'emergency_contact']))
+      setBoarders(decryptedBoarders)
       setRooms(roomData || [])
     } catch (err) {
       console.error('Error fetching boarders:', err)

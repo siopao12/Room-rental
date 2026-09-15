@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { decryptObject } from '../lib/encryptionHelper'
 
 /**
  * useNotifications — real-time notification hook
@@ -24,8 +25,9 @@ export function useNotifications(userProfile) {
       .limit(50)
 
     if (!error && data) {
-      setNotifications(data)
-      setUnreadCount(data.filter(n => !n.is_read).length)
+      const decNotifs = data.map(n => decryptObject(n, ['message']))
+      setNotifications(decNotifs)
+      setUnreadCount(decNotifs.filter(n => !n.is_read).length)
     }
     setLoading(false)
   }, [userId])
@@ -47,7 +49,8 @@ export function useNotifications(userProfile) {
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          setNotifications(prev => [payload.new, ...prev].slice(0, 50))
+          const decNew = decryptObject(payload.new, ['message'])
+          setNotifications(prev => [decNew, ...prev].slice(0, 50))
           setUnreadCount(prev => prev + 1)
         }
       )

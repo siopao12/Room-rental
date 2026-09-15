@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { CreditCard, AlertCircle, CheckCircle2, Loader2, Hourglass, XCircle } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { decryptObject } from '../../../lib/encryptionHelper'
 
 export default function BoarderPaymentHistorySection({ rentalData }) {
   const [payments, setPayments] = useState([])
@@ -19,7 +20,9 @@ export default function BoarderPaymentHistorySection({ rentalData }) {
         .select('*, bills(billing_month)')
         .eq('rental_id', rentalData.id)
         .order('payment_date', { ascending: false })
-      setPayments(data || [])
+
+      const decPayments = (data || []).map(p => decryptObject(p, ['reference_number', 'notes', 'rejection_reason']))
+      setPayments(decPayments)
     } catch (err) {
       console.error('Error fetching payment history:', err)
     } finally {

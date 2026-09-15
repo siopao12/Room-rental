@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Users, Search, Loader2, RefreshCw, ChevronDown, ChevronUp, Mail, ShieldAlert, UserCheck, UserX, Key } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { decryptObject } from '../../../lib/encryptionHelper'
 import { sanitizeError, logError } from '../../../lib/errorHandler'
 
 const ROLE_COLORS = {
@@ -31,7 +32,7 @@ export default function UserManagementSection() {
         supabase.from('users').select('*, roles(id, name)').order('created_at', { ascending: false }),
         supabase.from('roles').select('*').order('id'),
       ])
-      setUsers(usersData || [])
+      setUsers((usersData || []).map(u => decryptObject(u, ['phone', 'emergency_contact'])))
       setRoles(rolesData || [])
     } catch (err) {
       logError('UserManagementSection.fetchData', err)

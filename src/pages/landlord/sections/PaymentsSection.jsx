@@ -5,6 +5,7 @@ import {
   Settings, QrCode, Sparkles, Smartphone, Building, ShieldCheck, Trash2, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabaseClient'
+import { encryptData, decryptData, decryptObject } from '../../../lib/encryptionHelper'
 import { createNotification } from '../../../lib/notifyHelper'
 import { sanitizeError, logError } from '../../../lib/errorHandler'
 
@@ -92,36 +93,37 @@ export default function PaymentsSection({ currentUser }) {
           .maybeSingle()
 
         if (settingsData) {
-          setPaymentSettings(settingsData)
+          const decSettings = decryptObject(settingsData, ['gcash_number', 'gcash_name', 'bank_account_number', 'bank_account_name'])
+          setPaymentSettings(decSettings)
           setSettingsForm({
-            gcash_name: settingsData.gcash_name || '',
-            gcash_number: settingsData.gcash_number || '',
-            gcash_qr_url: settingsData.gcash_qr_url || null,
-            gcash_enabled: settingsData.gcash_enabled ?? true,
+            gcash_name: decSettings.gcash_name || '',
+            gcash_number: decSettings.gcash_number || '',
+            gcash_qr_url: decSettings.gcash_qr_url || null,
+            gcash_enabled: decSettings.gcash_enabled ?? true,
 
-            maya_name: settingsData.maya_name || '',
-            maya_number: settingsData.maya_number || '',
-            maya_qr_url: settingsData.maya_qr_url || null,
-            maya_enabled: settingsData.maya_enabled ?? false,
+            maya_name: decSettings.maya_name || '',
+            maya_number: decSettings.maya_number || '',
+            maya_qr_url: decSettings.maya_qr_url || null,
+            maya_enabled: decSettings.maya_enabled ?? false,
 
-            bank_name: settingsData.bank_name || 'BDO Unibank',
-            bank_account_name: settingsData.bank_account_name || '',
-            bank_account_number: settingsData.bank_account_number || '',
-            bank_enabled: settingsData.bank_enabled ?? false,
+            bank_name: decSettings.bank_name || 'BDO Unibank',
+            bank_account_name: decSettings.bank_account_name || '',
+            bank_account_number: decSettings.bank_account_number || '',
+            bank_enabled: decSettings.bank_enabled ?? false,
 
-            instructions: settingsData.instructions || 'Please take a clear screenshot of your payment receipt and make sure the Reference / Transaction Number is visible.'
+            instructions: decSettings.instructions || 'Please take a clear screenshot of your payment receipt and make sure the Reference / Transaction Number is visible.'
           })
         } else if (userProfile?.name) {
           setSettingsForm(f => ({
             ...f,
-            gcash_name: f.gcash_name || userProfile.name,
-            maya_name: f.maya_name || userProfile.name,
-            bank_account_name: f.bank_account_name || userProfile.name
+            gcash_name: userProfile.name,
+            maya_name: userProfile.name,
+            bank_account_name: userProfile.name
           }))
         }
       }
 
-      const pList = paymentsData || []
+      const pList = (paymentsData || []).map(p => decryptObject(p, ['reference_number', 'notes', 'rejection_reason']))
       setPayments(pList)
       setRentals(rentalsData || [])
       setBills(billsData || [])
@@ -187,8 +189,9 @@ export default function PaymentsSection({ currentUser }) {
 
       const payload = {
         landlord_id: landlordId,
-        gcash_name: settingsForm.gcash_name.trim(),
-        gcash_number: settingsForm.gcash_number.trim(),
+
+        gcash_name: encryptData(settingsForm.gcash_name.trim()),
+        gcash_number: encryptData(settingsForm.gcash_number.trim()),
         gcash_qr_url: settingsForm.gcash_qr_url,
         gcash_enabled: settingsForm.gcash_enabled,
 
@@ -198,8 +201,8 @@ export default function PaymentsSection({ currentUser }) {
         maya_enabled: settingsForm.maya_enabled,
 
         bank_name: settingsForm.bank_name.trim(),
-        bank_account_name: settingsForm.bank_account_name.trim(),
-        bank_account_number: settingsForm.bank_account_number.trim(),
+        bank_account_name: encryptData(settingsForm.bank_account_name.trim()),
+        bank_account_number: encryptData(settingsForm.bank_account_number.trim()),
         bank_enabled: settingsForm.bank_enabled,
 
         instructions: settingsForm.instructions.trim(),
@@ -211,6 +214,20 @@ export default function PaymentsSection({ currentUser }) {
         .upsert(payload, { onConflict: 'landlord_id' })
 
       if (error) throw error
+
+      try {
+        const clientIp = typeof window !== 'undefined'
+          ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? '127.0.0.1 (Localhost)' : window.location.hostname)
+          : '127.0.0.1 (Localhost)'
+
+        await supabase.from('audit_logs').insert({
+          user_id: landlordId,
+          action: 'UPDATE_PAYMENT_SETTINGS',
+          target_type: 'PAYMENT_SETTINGS',
+          description: `Landlord updated payment channels (GCash: ${settingsForm.gcash_enabled ? 'ON' : 'OFF'}, Maya: ${settingsForm.maya_enabled ? 'ON' : 'OFF'}, Bank: ${settingsForm.bank_enabled ? 'ON' : 'OFF'})`,
+          ip_address: encryptData(clientIp)
+        })
+      } catch (_) { }
 
       setSuccessMsg('Payment setup & QR codes saved successfully!')
       setShowSettingsForm(false)
@@ -252,13 +269,10 @@ export default function PaymentsSection({ currentUser }) {
           .single()
 
         if (currentBill) {
-          const totalPaid = Number(currentBill.amount_paid || 0) + amount
-          const amountDue = Number(currentBill.amount_due)
-          const newAmountPaid = Math.min(totalPaid, amountDue)
-          const newStatus = newAmountPaid >= amountDue ? 'Paid' : totalPaid > 0 ? 'Partial' : 'Unpaid'
+          const billAmount = Number(currentBill.amount || 0)
+          const newStatus = amount >= billAmount ? 'Paid' : 'Unpaid'
 
           await supabase.from('bills').update({
-            amount_paid: newAmountPaid,
             status: newStatus
           }).eq('id', currentBill.id)
 
@@ -279,27 +293,23 @@ export default function PaymentsSection({ currentUser }) {
               .maybeSingle()
 
             if (!existingNext) {
-              const { data: newBill } = await supabase.from('bills').insert({
+              await supabase.from('bills').insert({
                 rental_id: currentBill.rental_id,
+                user_id: currentBill.user_id,
                 billing_month: nextMonth.toISOString().split('T')[0],
-                amount_due: currentBill.amount_due,
-                amount_paid: 0,
+                amount: currentBill.amount,
                 due_date: nextDueDate.toISOString().split('T')[0],
                 status: 'Unpaid'
-              }).select().single()
-
-              await supabase.from('rentals').update({
-                next_due_date: nextDueDate.toISOString().split('T')[0]
-              }).eq('id', currentBill.rental_id)
+              })
 
               // Notify the boarder a new bill has been generated
-              const boarderUserId = payment.rentals?.boarder?.id
+              const boarderUserId = payment.rentals?.boarder?.id || currentBill.user_id
               if (boarderUserId) {
                 const monthLabel = nextMonth.toLocaleString('default', { month: 'long', year: 'numeric' })
                 await createNotification(
                   boarderUserId,
                   '🧾 New Bill Generated',
-                  `Your bill for ${monthLabel} of ₱${Number(currentBill.amount_due).toLocaleString()} is now due on ${nextDueDate.toLocaleDateString()}.`,
+                  `Your bill for ${monthLabel} of ₱${Number(currentBill.amount).toLocaleString()} is now due on ${nextDueDate.toLocaleDateString()}.`,
                   'new_bill'
                 )
               }
@@ -371,7 +381,7 @@ export default function PaymentsSection({ currentUser }) {
         .from('payments')
         .update({
           status: 'Rejected',
-          rejection_reason: rejectReason.trim() || 'Invalid payment proof / reference number',
+          rejection_reason: encryptData(rejectReason.trim() || 'Invalid payment proof / reference number'),
           recorded_by: landlordId
         })
         .eq('id', rejectingPayment.id)
@@ -429,8 +439,8 @@ export default function PaymentsSection({ currentUser }) {
         payment_date: form.payment_date,
         month_covered: monthCovered,
         method: form.method,
-        reference_number: form.reference_number.trim() || null,
-        notes: form.notes,
+        reference_number: form.reference_number.trim() ? encryptData(form.reference_number.trim()) : null,
+        notes: form.notes ? encryptData(form.notes) : null,
         recorded_by: landlordId,
         status: 'Paid'
       }).select().single()
@@ -441,13 +451,10 @@ export default function PaymentsSection({ currentUser }) {
       if (form.bill_id) {
         const bill = bills.find(b => b.id === parseInt(form.bill_id, 10))
         if (bill) {
-          const totalPaid = Number(bill.amount_paid || 0) + amount
-          const amountDue = Number(bill.amount_due)
-          const newAmountPaid = Math.min(totalPaid, amountDue)
-          const newStatus = newAmountPaid >= amountDue ? 'Paid' : totalPaid > 0 ? 'Partial' : 'Unpaid'
+          const billAmount = Number(bill.amount || 0)
+          const newStatus = amount >= billAmount ? 'Paid' : 'Unpaid'
 
           await supabase.from('bills').update({
-            amount_paid: newAmountPaid,
             status: newStatus
           }).eq('id', bill.id)
 
@@ -459,18 +466,23 @@ export default function PaymentsSection({ currentUser }) {
             const nextDueDate = new Date(nextMonth)
             nextDueDate.setDate(5)
 
-            await supabase.from('bills').insert({
-              rental_id: bill.rental_id,
-              billing_month: nextMonth.toISOString().split('T')[0],
-              amount_due: bill.amount_due,
-              amount_paid: 0,
-              due_date: nextDueDate.toISOString().split('T')[0],
-              status: 'Unpaid'
-            })
+            const { data: existingNext } = await supabase
+              .from('bills')
+              .select('id')
+              .eq('rental_id', bill.rental_id)
+              .eq('billing_month', nextMonth.toISOString().split('T')[0])
+              .maybeSingle()
 
-            await supabase.from('rentals').update({
-              next_due_date: nextDueDate.toISOString().split('T')[0]
-            }).eq('id', bill.rental_id)
+            if (!existingNext) {
+              await supabase.from('bills').insert({
+                rental_id: bill.rental_id,
+                user_id: bill.user_id,
+                billing_month: nextMonth.toISOString().split('T')[0],
+                amount: bill.amount,
+                due_date: nextDueDate.toISOString().split('T')[0],
+                status: 'Unpaid'
+              })
+            }
           }
         }
       }
@@ -1046,7 +1058,7 @@ export default function PaymentsSection({ currentUser }) {
                 <option value="">Choose rental...</option>
                 {rentals.map(r => (
                   <option key={r.id} value={r.id}>
-                    {r.boarder?.name || r.boarder?.email} — {r.rooms?.room_number} (₱{Number(r.monthly_rent || 0).toLocaleString()}/mo)
+                    {r.boarder?.name || r.boarder?.email} — {r.rooms?.room_number} (₱{Number(r.rooms?.price || 0).toLocaleString()}/mo)
                   </option>
                 ))}
               </select>
@@ -1058,7 +1070,7 @@ export default function PaymentsSection({ currentUser }) {
                 <option value="">No specific bill</option>
                 {bills.filter(b => !form.rental_id || String(b.rental_id) === String(form.rental_id)).map(b => (
                   <option key={b.id} value={b.id}>
-                    {new Date(b.billing_month).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })} — ₱{Number(b.amount_due - (b.amount_paid || 0)).toLocaleString()} due ({b.status})
+                    {new Date(b.billing_month).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })} — ₱{Number(b.amount || 0).toLocaleString()} due ({b.status})
                   </option>
                 ))}
               </select>

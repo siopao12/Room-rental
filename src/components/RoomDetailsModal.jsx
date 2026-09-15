@@ -54,7 +54,7 @@ export default function RoomDetailsModal({ room, onClose, onBook }) {
                 {room.name}
               </h2>
               <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-                Floor {room.floor || 1} • {room.capacity || '1-2'} Pax Max
+                {room.floor_number || room.floor || '1st Floor'} • {room.capacity || '1-2'} Pax Max
               </p>
             </div>
             
@@ -70,7 +70,7 @@ export default function RoomDetailsModal({ room, onClose, onBook }) {
           <div className="room-specs-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '20px', background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem', color: '#334155' }}>
               <Maximize2 size={16} color="#2d6a4f" />
-              <span><strong>{room.size || '18m²'}</strong> Size</span>
+              <span><strong>{room.size_sqm ? `${room.size_sqm}m²` : (room.size || '18m²')}</strong> Size</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem', color: '#334155' }}>
               <Users size={16} color="#2d6a4f" />
@@ -78,7 +78,7 @@ export default function RoomDetailsModal({ room, onClose, onBook }) {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem', color: '#334155' }}>
               <Layers size={16} color="#2d6a4f" />
-              <span>Floor <strong>{room.floor || 1}</strong></span>
+              <span>Floor <strong>{room.floor_number || room.floor || '1st Floor'}</strong></span>
             </div>
           </div>
 
