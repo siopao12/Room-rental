@@ -1,26 +1,26 @@
-# 🏠 RoomEase — Modern Boarding House & Rental Management System
+#  RoomEase — Modern Boarding House & Rental Management System
 
 RoomEase (formerly RentEase) is a comprehensive, full-stack rental management web application built with **React**, **Vite**, and **Supabase (PostgreSQL)**. It features **Client-Side AES-256 Field-Level Data Encryption**, automated monthly billing, digital payment proof verification, real-time notifications, and full disaster recovery engines.
 
 ---
 
-## 🌟 Key Features & Role-Based Portals
+##  Key Features & Role-Based Portals
 
-### 👤 1. Boarder Portal
+### 1. Boarder Portal
 - **Dashboard & Room Details**: View assigned room specs, monthly rent, floor number, room size ($\text{m}^2$), and listed amenities.
 - **Dynamic Due Date & Bills**: Track current and upcoming bills with automatic due date calculations.
 - **Digital Payment Submissions**: Submit payment receipts via **GCash**, **Maya**, **Bank Transfer**, or **Cash** with reference number validation (13 digits) and screenshot upload.
 - **Payment History**: View past verified/paid transactions with decrypted reference numbers and instant status indicators.
 - **In-App Notifications**: Real-time alerts for application approvals, payment verifications, and new bill releases.
 
-### 🏡 2. Landlord Portal
+### 2. Landlord Portal
 - **Room & Inventory Management**: Add, edit, and toggle availability for rooms, set capacity, pricing, floor numbers, room size, and amenities.
 - **Applicant Review & Verification**: Approve or reject rental applications with applicant profile insights and status management.
 - **Payment Verification & Bill Rollover**: 1-Click payment proof approval, automatically clearing current bills and generating the upcoming month's billing cycle.
 - **Payment Setup**: Configure landlord payment accounts (GCash, Maya, BDO/BPI Bank) and upload QR code receipts.
 - **Broadcast Announcements**: Send property-wide notices with priority levels (Important, General, Maintenance).
 
-### 🛡️ 3. Admin Portal & Disaster Recovery
+###  3. Admin Portal & Disaster Recovery
 - **User & RBAC Management**: Control system user accounts, assign roles (Admin, Landlord, Boarder), and toggle user active states.
 - **Security Audit Trails**: Track login activity, system setting modifications, and user actions with client IP address logging.
 - **Full Database Backup Archives**: Generate and download complete timestamped `.json` database snapshots.
@@ -29,7 +29,7 @@ RoomEase (formerly RentEase) is a comprehensive, full-stack rental management we
 
 ---
 
-## 🔒 Security Architecture: Client-Side AES-256 Data Encryption
+##  Security Architecture: Client-Side AES-256 Data Encryption
 
 To guarantee data confidentiality at rest, RoomEase uses **Client-Side AES-256 Field-Level Encryption** (`crypto-js`). Sensitive PII and financial details are encrypted in the browser **before** transmission to Supabase. Anyone inspecting raw database tables or exporting raw database dumps will only see encrypted ciphertext (`ENC:...`).
 
@@ -45,7 +45,7 @@ To guarantee data confidentiality at rest, RoomEase uses **Client-Side AES-256 F
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
 - **Frontend**: React 18, Vite, Vanilla CSS Design System, Lucide React Icons
 - **Backend & Database**: Supabase (PostgreSQL), Supabase Auth, Supabase Storage
@@ -54,7 +54,7 @@ To guarantee data confidentiality at rest, RoomEase uses **Client-Side AES-256 F
 
 ---
 
-## 📁 Project Directory Structure
+##  Project Directory Structure
 
 ```text
 rental-system/
@@ -90,7 +90,7 @@ rental-system/
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 - **Node.js**: `v18.0.0` or higher
@@ -125,9 +125,3 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 ```bash
 npm run build
 ```
-
----
-
-## 📜 License & Credits
-
-Developed for RoomEase Rental Management System. All rights reserved.
